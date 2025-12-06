@@ -17,6 +17,7 @@ private:
 public:
 	void RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *pPlayerInfo, float Alpha);
 	void RenderNamePlatePreview(vec2 Position, int Dummy);
+	void RenderChatBubble(vec2 Position, int ClientId, float Alpha);
 	void ResetNamePlates();
 	int Sizeof() const override { return sizeof(*this); }
 	void OnWindowResize() override;

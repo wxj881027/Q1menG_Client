@@ -1081,6 +1081,225 @@ void CNamePlates::ResetNamePlates()
 		NamePlate.Reset(*GameClient());
 }
 
+void CNamePlates::RenderChatBubble(vec2 Position, int ClientId, float Alpha)
+{
+	// Check if chat bubbles are enabled
+	if(!g_Config.m_TcChatBubble)
+		return;
+
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+
+	auto &ClientData = GameClient()->m_aClients[ClientId];
+
+	// Determine what text to show
+	const char *pBubbleText = nullptr;
+	bool IsTyping = false;
+	int64_t Now = time();
+
+	// Check if this is local player who is currently typing
+	const bool IsLocalPlayer = (GameClient()->m_Snap.m_LocalClientId == ClientId);
+	if(IsLocalPlayer && GameClient()->m_Chat.IsActive() && g_Config.m_TcChatBubbleTyping)
+	{
+		const char *pInputText = GameClient()->m_Chat.GetInputText();
+		if(pInputText && pInputText[0] != '\0')
+		{
+			pBubbleText = pInputText;
+			IsTyping = true;
+		}
+	}
+
+	// If not typing, check for existing chat bubble
+	if(!pBubbleText)
+	{
+		if(ClientData.m_aChatBubbleText[0] == '\0')
+			return;
+		if(Now >= ClientData.m_ChatBubbleExpireTick)
+			return;
+		pBubbleText = ClientData.m_aChatBubbleText;
+	}
+
+	// Calculate animation progress
+	float EasedProgress = 1.0f;
+	float BubbleAlpha = Alpha;
+	float AnimScale = 1.0f; // For shrink animation
+	float AnimSlideOffset = 0.0f; // For slide up animation
+
+	if(IsTyping)
+	{
+		// For typing, always fully visible with no fade
+		EasedProgress = 1.0f;
+		BubbleAlpha = Alpha;
+	}
+	else
+	{
+		// Calculate animation progress (0.0 = just started, 1.0 = fully visible)
+		const float AnimDuration = 0.2f; // 200ms animation
+		int64_t TimeSinceStart = Now - ClientData.m_ChatBubbleStartTick;
+		float AnimProgress = std::clamp((float)TimeSinceStart / (AnimDuration * time_freq()), 0.0f, 1.0f);
+		
+		// Ease-out animation curve (starts fast, slows down)
+		EasedProgress = 1.0f - (1.0f - AnimProgress) * (1.0f - AnimProgress);
+
+		// Calculate disappear animation (last 1 second)
+		int64_t TimeRemaining = ClientData.m_ChatBubbleExpireTick - Now;
+		int64_t FadeStartTime = time_freq(); // Start animation 1 second before expiration
+		float DisappearProgress = 1.0f; // 0.0 = fully visible, 1.0 = fully disappeared
+		if(TimeRemaining < FadeStartTime)
+		{
+			DisappearProgress = 1.0f - (float)TimeRemaining / (float)FadeStartTime;
+		}
+		else
+		{
+			DisappearProgress = 0.0f;
+		}
+
+		// Apply disappear animation based on animation type
+		// 0 = fade (default), 1 = shrink, 2 = slide up
+		int AnimationType = g_Config.m_TcChatBubbleAnimation;
+		switch(AnimationType)
+		{
+		case 1: // Shrink animation
+			AnimScale = 1.0f - DisappearProgress * 0.8f; // Shrink to 20% then disappear
+			BubbleAlpha *= (DisappearProgress < 0.9f) ? 1.0f : (1.0f - (DisappearProgress - 0.9f) * 10.0f);
+			break;
+		case 2: // Slide up animation
+			AnimSlideOffset = DisappearProgress * 50.0f; // Slide up 50 pixels
+			BubbleAlpha *= 1.0f - DisappearProgress; // Also fade while sliding
+			break;
+		case 0: // Fade animation (default)
+		default:
+			BubbleAlpha *= 1.0f - DisappearProgress;
+			break;
+		}
+		
+		// Apply fade-in from animation
+		BubbleAlpha *= EasedProgress;
+	}
+
+	if(BubbleAlpha <= 0.0f)
+		return;
+
+	// Get current screen bounds (world coordinates with current zoom)
+	float ScreenX0, ScreenY0, ScreenX1, ScreenY1;
+	Graphics()->GetScreen(&ScreenX0, &ScreenY0, &ScreenX1, &ScreenY1);
+
+	// Check if position is on screen
+	if(!(in_range(Position.x, ScreenX0 - 400, ScreenX1 + 400) && in_range(Position.y, ScreenY0 - 400, ScreenY1 + 400)))
+		return;
+
+	// Calculate screen-space position (0-1 range) for zoom independence
+	float ScreenWidth = ScreenX1 - ScreenX0;
+	float ScreenHeight = ScreenY1 - ScreenY0;
+	float ScreenPosX = (Position.x - ScreenX0) / ScreenWidth;
+	float ScreenPosY = (Position.y - ScreenY0) / ScreenHeight;
+
+	// Map to interface coordinates for text rendering (fixed zoom)
+	Graphics()->MapScreenToInterface(GameClient()->m_Camera.m_Center.x, GameClient()->m_Camera.m_Center.y);
+
+	// Get interface screen bounds (fixed regardless of zoom)
+	float InterfaceX0, InterfaceY0, InterfaceX1, InterfaceY1;
+	Graphics()->GetScreen(&InterfaceX0, &InterfaceY0, &InterfaceX1, &InterfaceY1);
+	float InterfaceWidth = InterfaceX1 - InterfaceX0;
+	float InterfaceHeight = InterfaceY1 - InterfaceY0;
+
+	// Convert screen-space position to interface coordinates
+	float InterfaceX = InterfaceX0 + ScreenPosX * InterfaceWidth;
+	float InterfaceY = InterfaceY0 + ScreenPosY * InterfaceHeight;
+
+	// Calculate zoom scale factor for bubble size
+	// m_Zoom < 1.0 means zoomed in (objects appear larger), > 1.0 means zoomed out (objects appear smaller)
+	// We want bubble to scale inversely: zoom in = larger bubble, zoom out = smaller bubble
+	float CameraZoom = GameClient()->m_Camera.m_Zoom;
+	float ZoomScale = 1.0f;
+	if(g_Config.m_TcChatBubbleZoomScale && CameraZoom > 0.0f)
+	{
+		// Apply zoom scaling with configurable intensity
+		// ZoomScale = 1/zoom means: zoom=0.5 -> scale=2, zoom=2 -> scale=0.5
+		ZoomScale = 1.0f / CameraZoom;
+		// Clamp to reasonable range to prevent extreme sizes
+		ZoomScale = std::clamp(ZoomScale, 0.25f, 4.0f);
+	}
+
+	// Configure text rendering - use settings with zoom scaling
+	const float BaseFontSize = (float)g_Config.m_TcChatBubbleFontSize;
+	const float BasePadding = 12.0f;
+	const float BaseRounding = (float)g_Config.m_TcChatBubbleRounding;
+	const float BaseMaxWidth = (float)g_Config.m_TcChatBubbleMaxWidth;
+	const float BaseOffsetY = (float)g_Config.m_TcChatBubbleOffsetY * 2.0f;
+
+	// Apply zoom scaling to all dimensions
+	const float FontSize = BaseFontSize * ZoomScale;
+	const float Padding = BasePadding * ZoomScale;
+	const float Rounding = BaseRounding * ZoomScale;
+	const float MaxWidth = BaseMaxWidth * ZoomScale;
+	const float BaseOffset = BaseOffsetY * ZoomScale;
+
+	// Set anti-aliasing flags for smoother text
+	unsigned int PrevFlags = TextRender()->GetRenderFlags();
+	TextRender()->SetRenderFlags(ETextRenderFlags::TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT);
+
+	// Calculate text dimensions
+	CTextCursor MeasureCursor;
+	MeasureCursor.m_FontSize = FontSize;
+	MeasureCursor.m_LineWidth = MaxWidth;
+	MeasureCursor.m_Flags = 0;
+	TextRender()->TextEx(&MeasureCursor, pBubbleText);
+	float TextHeight = MeasureCursor.Height();
+	float TextWidth = MeasureCursor.m_LongestLineWidth;
+
+	// Calculate bubble dimensions and position (with scale animation)
+	float BubbleWidth = (TextWidth + Padding * 2.0f) * AnimScale;
+	float BubbleHeight = (TextHeight + Padding * 2.0f) * AnimScale;
+
+	// Position bubble above the player with pop-up animation and slide offset
+	// Animation: starts 20 pixels lower and moves up (only for non-typing)
+	float AnimOffset = IsTyping ? 0.0f : (1.0f - EasedProgress) * 20.0f;
+	AnimOffset += AnimSlideOffset; // Add slide up offset for slide animation
+	float BubbleX = InterfaceX - BubbleWidth / 2.0f;
+	float BubbleY = InterfaceY - BaseOffset - BubbleHeight + AnimOffset;
+
+	// Draw rounded rectangle background with slight border
+	// Use configured alpha value and colors (解析HSLA格式配置为RGBA)
+	float ConfigAlpha = g_Config.m_TcChatBubbleAlpha / 100.0f;
+	// 解析配置颜色 - CFGFLAG_COLALPHA 表示带alpha的HSLA格式
+	ColorHSLA BgHSLA(g_Config.m_TcChatBubbleBgColor, true);
+	ColorRGBA BgColor = color_cast<ColorRGBA>(BgHSLA);
+	BgColor.a *= BubbleAlpha * ConfigAlpha;
+	Graphics()->TextureClear();
+	Graphics()->DrawRect(BubbleX, BubbleY, BubbleWidth, BubbleHeight, BgColor, IGraphics::CORNER_ALL, Rounding);
+
+	// 已移除禁言灰色雾效果
+
+	// Draw text centered in bubble with configured text color (with scale)
+	// 文字颜色不带alpha标志，按默认解析
+	ColorHSLA TextHSLA(g_Config.m_TcChatBubbleTextColor, false);
+	ColorRGBA TextColor = color_cast<ColorRGBA>(TextHSLA);
+	TextColor.a *= BubbleAlpha * ConfigAlpha;
+	TextRender()->TextColor(TextColor);
+	TextRender()->TextOutlineColor(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f * BubbleAlpha * ConfigAlpha));
+	
+	// Center text horizontally in bubble (with scale)
+	float ScaledTextWidth = TextWidth * AnimScale;
+	float ScaledTextHeight = TextHeight * AnimScale;
+	float TextX = BubbleX + (BubbleWidth - ScaledTextWidth) / 2.0f;
+	float TextY = BubbleY + (BubbleHeight - ScaledTextHeight) / 2.0f;
+	
+	CTextCursor Cursor;
+	Cursor.m_FontSize = FontSize * AnimScale;
+	Cursor.m_LineWidth = MaxWidth * AnimScale;
+	Cursor.m_Flags = TEXTFLAG_RENDER;
+	Cursor.SetPosition(vec2(TextX, TextY));
+	TextRender()->TextEx(&Cursor, pBubbleText);
+	
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
+	TextRender()->TextOutlineColor(TextRender()->DefaultTextOutlineColor());
+	TextRender()->SetRenderFlags(PrevFlags);
+
+	// Restore screen mapping
+	Graphics()->MapScreen(ScreenX0, ScreenY0, ScreenX1, ScreenY1);
+}
+
 void CNamePlates::OnRender()
 {
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
@@ -1116,6 +1335,9 @@ void CNamePlates::OnRender()
 			//	continue;
 			const vec2 RenderPos = GameClient()->m_aClients[i].m_RenderPos;
 			RenderNamePlateGame(RenderPos, pInfo, 1.0f);
+
+			// Render chat bubble above player
+			RenderChatBubble(RenderPos, i, 1.0f);
 		}
 	}
 }
@@ -1132,3 +1354,4 @@ CNamePlates::~CNamePlates()
 {
 	delete m_pData;
 }
+

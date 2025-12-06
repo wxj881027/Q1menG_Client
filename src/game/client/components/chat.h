@@ -31,6 +31,14 @@ class CChat : public CComponent
 	static constexpr float CHAT_HEIGHT_MIN = 50.0f;
 	static constexpr float CHAT_FONTSIZE_WIDTH_RATIO = 2.5f;
 
+	// 动画常量
+	static constexpr float CHAT_ANIM_FADE_IN_DURATION = 0.3f;   // 淡入持续时间（秒）
+	static constexpr float CHAT_ANIM_FADE_OUT_DURATION = 0.5f;  // 淡出持续时间（秒）
+	static constexpr float CHAT_ANIM_SLIDE_OFFSET = 25.0f;      // 普通消息滑入偏移量（像素）
+	static constexpr float CHAT_ANIM_HIGHLIGHT_SLIDE = 50.0f;   // 高亮/私信消息滑入偏移量
+	static constexpr float CHAT_ANIM_SLIDE_OUT_OFFSET = 60.0f;  // 淡出时向左滑出的偏移量
+	static constexpr float CHAT_ANIM_CUTOFF_DURATION = 0.3f;    // 被挤出时的动画持续时间
+
 	enum
 	{
 		MAX_LINES = 64,
@@ -68,6 +76,10 @@ class CChat : public CComponent
 		int m_TimesRepeated;
 
 		std::shared_ptr<CTranslateResponse> m_pTranslateResponse;
+
+		// 被挤出动画状态
+		bool m_IsCutOff;          // 是否正在被挤出
+		int64_t m_CutOffTime;     // 开始被挤出的时间
 	};
 
 	bool m_PrevScoreBoardShowed;
@@ -167,6 +179,15 @@ class CChat : public CComponent
 	bool LineShouldHighlight(const char *pLine, const char *pName);
 	void StoreSave(const char *pText);
 
+	// 动画辅助函数
+	static float EaseOutQuad(float t);
+	static float EaseInQuad(float t);
+	static float EaseOutBack(float t);
+	float CalculateAnimationAlpha(const CLine &Line, bool ShowChat) const;
+	float CalculateAnimationOffsetX(const CLine &Line, bool ShowChat) const;
+	float CalculateCutOffAlpha(const CLine &Line) const;
+	float CalculateCutOffOffsetX(const CLine &Line) const;
+
 	friend class CBindChat;
 	friend class CTranslate;
 	friend class CTClient;
@@ -178,6 +199,7 @@ public:
 	static constexpr float MESSAGE_TEE_PADDING_RIGHT = 0.5f;
 
 	bool IsActive() const { return m_Mode != MODE_NONE; }
+	const char *GetInputText() const { return m_Input.GetString(); }
 	void AddLine(int ClientId, int Team, const char *pLine);
 	void EnableMode(int Team);
 	void DisableMode();

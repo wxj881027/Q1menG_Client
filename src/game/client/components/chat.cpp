@@ -23,12 +23,17 @@
 #include <game/client/gameclient.h>
 #include <game/localization.h>
 
+#include <cmath>
+
 char CChat::ms_aDisplayText[MAX_LINE_LENGTH] = "";
 
 CChat::CLine::CLine()
 {
 	m_TextContainerIndex.Reset();
 	m_QuadContainerIndex = -1;
+	// 初始化被挤出动画状态
+	m_IsCutOff = false;
+	m_CutOffTime = 0;
 }
 
 void CChat::CLine::Reset(CChat &This)
@@ -43,6 +48,128 @@ void CChat::CLine::Reset(CChat &This)
 	m_TimesRepeated = 0;
 	m_pManagedTeeRenderInfo = nullptr;
 	m_pTranslateResponse = nullptr;
+	// 重置被挤出动画状态
+	m_IsCutOff = false;
+	m_CutOffTime = 0;
+}
+
+// 缓动函数实现
+float CChat::EaseOutQuad(float t)
+{
+	return 1.0f - (1.0f - t) * (1.0f - t);
+}
+
+float CChat::EaseInQuad(float t)
+{
+	return t * t;
+}
+
+float CChat::EaseOutBack(float t)
+{
+	const float c1 = 1.70158f;
+	const float c3 = c1 + 1.0f;
+	return 1.0f + c3 * std::pow(t - 1.0f, 3.0f) + c1 * std::pow(t - 1.0f, 2.0f);
+}
+
+float CChat::CalculateAnimationAlpha(const CLine &Line, bool ShowChat) const
+{
+	const float MessageAge = (time() - Line.m_Time) / (float)time_freq();
+	const float FadeInDuration = CHAT_ANIM_FADE_IN_DURATION;
+	const float FadeOutStart = 14.0f;
+	const float FadeOutDuration = CHAT_ANIM_FADE_OUT_DURATION;
+
+	float Alpha = 1.0f;
+
+	// 淡入动画
+	if(MessageAge < FadeInDuration)
+	{
+		float t = MessageAge / FadeInDuration;
+		Alpha = EaseOutQuad(t);
+	}
+	// 淡出动画（仅在非显示聊天模式下，且消息超过显示时限）
+	else if(!ShowChat && MessageAge > FadeOutStart)
+	{
+		float t = (MessageAge - FadeOutStart) / FadeOutDuration;
+		t = std::clamp(t, 0.0f, 1.0f);
+		// 使用更平滑的淡出曲线
+		Alpha = 1.0f - EaseInQuad(t);
+	}
+
+	return std::clamp(Alpha, 0.0f, 1.0f);
+}
+
+float CChat::CalculateAnimationOffsetX(const CLine &Line, bool ShowChat) const
+{
+	const float MessageAge = (time() - Line.m_Time) / (float)time_freq();
+	const float SlideInDuration = CHAT_ANIM_FADE_IN_DURATION;
+	const float FadeOutStart = 14.0f;
+	const float FadeOutDuration = CHAT_ANIM_FADE_OUT_DURATION;
+
+	// 淡入时从左向右滑入
+	if(MessageAge < SlideInDuration)
+	{
+		float t = MessageAge / SlideInDuration;
+		// 高亮和私信消息使用更显著的回弹效果
+		if(Line.m_Highlighted || Line.m_Whisper)
+		{
+			float eased = EaseOutBack(t);
+			// 限制回弹效果
+			eased = std::min(eased, 1.08f);
+			return -CHAT_ANIM_HIGHLIGHT_SLIDE * (1.0f - eased);
+		}
+		else
+		{
+			return -CHAT_ANIM_SLIDE_OFFSET * (1.0f - EaseOutQuad(t));
+		}
+	}
+	// 淡出时向左滑出屏幕（仅在非显示聊天模式下）
+	else if(!ShowChat && MessageAge > FadeOutStart)
+	{
+		float t = (MessageAge - FadeOutStart) / FadeOutDuration;
+		t = std::clamp(t, 0.0f, 1.0f);
+		// 使用平滑的缓入曲线向左滑出
+		float eased = EaseInQuad(t);
+		return -CHAT_ANIM_SLIDE_OUT_OFFSET * eased;
+	}
+
+	return 0.0f;
+}
+
+// 计算被挤出时的透明度
+float CChat::CalculateCutOffAlpha(const CLine &Line) const
+{
+	if(!Line.m_IsCutOff || Line.m_CutOffTime == 0)
+		return 1.0f;
+
+	const float CutOffAge = (time() - Line.m_CutOffTime) / (float)time_freq();
+	const float CutOffDuration = CHAT_ANIM_CUTOFF_DURATION;
+
+	if(CutOffAge < CutOffDuration)
+	{
+		float t = CutOffAge / CutOffDuration;
+		return 1.0f - EaseInQuad(t);
+	}
+
+	return 0.0f;
+}
+
+// 计算被挤出时的 X 偏移
+float CChat::CalculateCutOffOffsetX(const CLine &Line) const
+{
+	if(!Line.m_IsCutOff || Line.m_CutOffTime == 0)
+		return 0.0f;
+
+	const float CutOffAge = (time() - Line.m_CutOffTime) / (float)time_freq();
+	const float CutOffDuration = CHAT_ANIM_CUTOFF_DURATION;
+
+	if(CutOffAge < CutOffDuration)
+	{
+		float t = CutOffAge / CutOffDuration;
+		float eased = EaseInQuad(t);
+		return -CHAT_ANIM_SLIDE_OUT_OFFSET * eased;
+	}
+
+	return -CHAT_ANIM_SLIDE_OUT_OFFSET;
 }
 
 CChat::CChat()
@@ -67,9 +194,9 @@ CChat::CChat()
 			for(size_t i = 0; i < NumLetters; ++i)
 			{
 				if(Censor)
-					ms_aDisplayText[i] = '*';
+				 ms_aDisplayText[i] = '*';
 				else
-					ms_aDisplayText[i] = pStr[i];
+				 ms_aDisplayText[i] = pStr[i];
 				if(pStr[i] == ' ')
 				{
 					Censor = true;
@@ -449,7 +576,7 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 				}
 
 				// add the name
-				str_append(aBuf, pCompletionString);
+			 str_append(aBuf, pCompletionString);
 
 				// add separator
 				const char *pSeparator = "";
@@ -932,6 +1059,15 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 		}
 	}
 
+	// Set chat bubble for player
+	if(ClientId >= 0 && ClientId < MAX_CLIENTS)
+	{
+		CGameClient::CClientData &ClientData = GameClient()->m_aClients[ClientId];
+		str_copy(ClientData.m_aChatBubbleText, pLine, sizeof(ClientData.m_aChatBubbleText));
+		ClientData.m_ChatBubbleStartTick = time();
+		ClientData.m_ChatBubbleExpireTick = time() + time_freq() * g_Config.m_TcChatBubbleDuration;
+	}
+
 	// TClient
 	GameClient()->m_Translate.AutoTranslate(CurrentLine);
 }
@@ -1390,6 +1526,40 @@ void CChat::OnRender()
 		RealMsgPaddingY = 0;
 	}
 
+	// 第一遍：检测并标记被挤出的消息
+	float CheckY = y;
+	for(int i = 0; i < MAX_LINES; i++)
+	{
+		CLine &Line = m_aLines[((m_CurrentLine - i) + MAX_LINES) % MAX_LINES];
+		if(!Line.m_Initialized)
+			break;
+		if(Now > Line.m_Time + 16 * time_freq() && !m_PrevShowChat)
+			break;
+
+		CheckY -= Line.m_aYOffset[OffsetType];
+
+		// 检测是否被挤出
+		if(CheckY < HeightLimit)
+		{
+			// 刚刚开始被挤出
+			if(!Line.m_IsCutOff)
+			{
+				Line.m_IsCutOff = true;
+				Line.m_CutOffTime = Now;
+			}
+		}
+		else
+		{
+			// 不再被挤出，重置状态
+			if(Line.m_IsCutOff)
+			{
+				Line.m_IsCutOff = false;
+				Line.m_CutOffTime = 0;
+			}
+		}
+	}
+
+	// 第二遍：渲染所有消息（包括正在被挤出的消息）
 	for(int i = 0; i < MAX_LINES; i++)
 	{
 		CLine &Line = m_aLines[((m_CurrentLine - i) + MAX_LINES) % MAX_LINES];
@@ -1400,11 +1570,27 @@ void CChat::OnRender()
 
 		y -= Line.m_aYOffset[OffsetType];
 
-		// cut off if msgs waste too much space
-		if(y < HeightLimit)
-			break;
+		// 计算动画效果
+		float AnimAlpha = CalculateAnimationAlpha(Line, m_PrevShowChat);
+		float AnimOffsetX = CalculateAnimationOffsetX(Line, m_PrevShowChat);
 
-		float Blend = Now > Line.m_Time + 14 * time_freq() && !m_PrevShowChat ? 1.0f - (Now - Line.m_Time - 14 * time_freq()) / (2.0f * time_freq()) : 1.0f;
+		// 如果消息正在被挤出，应用挤出动画
+		if(Line.m_IsCutOff)
+		{
+			float CutOffAlpha = CalculateCutOffAlpha(Line);
+			float CutOffOffsetX = CalculateCutOffOffsetX(Line);
+			AnimAlpha *= CutOffAlpha;
+			AnimOffsetX += CutOffOffsetX;
+		}
+		// 如果不是被挤出，且超出高度限制，则跳过
+		else if(y < HeightLimit)
+		{
+			break;
+		}
+
+		// 如果完全透明，跳过渲染
+		if(AnimAlpha <= 0.001f)
+			continue;
 
 		// Draw backgrounds for messages in one batch
 		if(!g_Config.m_ClChatOld)
@@ -1412,8 +1598,8 @@ void CChat::OnRender()
 			Graphics()->TextureClear();
 			if(Line.m_QuadContainerIndex != -1)
 			{
-				Graphics()->SetColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClChatBackgroundColor, true)).WithMultipliedAlpha(Blend));
-				Graphics()->RenderQuadContainerEx(Line.m_QuadContainerIndex, 0, -1, 0, ((y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset));
+				Graphics()->SetColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClChatBackgroundColor, true)).WithMultipliedAlpha(AnimAlpha));
+				Graphics()->RenderQuadContainerEx(Line.m_QuadContainerIndex, 0, -1, AnimOffsetX, ((y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset));
 			}
 		}
 
@@ -1432,13 +1618,13 @@ void CChat::OnRender()
 				const CAnimState *pIdleState = CAnimState::GetIdle();
 				vec2 OffsetToMid;
 				CRenderTools::GetRenderTeeOffsetToRenderedTee(pIdleState, &TeeRenderInfo, OffsetToMid);
-				vec2 TeeRenderPos(x + (RealMsgPaddingX + TeeSize) / 2.0f, y + OffsetTeeY + FullHeightMinusTee / 2.0f + OffsetToMid.y);
-				RenderTools()->RenderTee(pIdleState, &TeeRenderInfo, EMOTE_NORMAL, vec2(1, 0.1f), TeeRenderPos, Blend);
+				vec2 TeeRenderPos(x + AnimOffsetX + (RealMsgPaddingX + TeeSize) / 2.0f, y + OffsetTeeY + FullHeightMinusTee / 2.0f + OffsetToMid.y);
+				RenderTools()->RenderTee(pIdleState, &TeeRenderInfo, EMOTE_NORMAL, vec2(1, 0.1f), TeeRenderPos, AnimAlpha);
 			}
 
-			const ColorRGBA TextColor = TextRender()->DefaultTextColor().WithMultipliedAlpha(Blend);
-			const ColorRGBA TextOutlineColor = TextRender()->DefaultTextOutlineColor().WithMultipliedAlpha(Blend);
-			TextRender()->RenderTextContainer(Line.m_TextContainerIndex, TextColor, TextOutlineColor, 0, (y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset);
+			const ColorRGBA TextColor = TextRender()->DefaultTextColor().WithMultipliedAlpha(AnimAlpha);
+			const ColorRGBA TextOutlineColor = TextRender()->DefaultTextOutlineColor().WithMultipliedAlpha(AnimAlpha);
+			TextRender()->RenderTextContainer(Line.m_TextContainerIndex, TextColor, TextOutlineColor, AnimOffsetX, (y + RealMsgPaddingY / 2.0f) - Line.m_TextYOffset);
 		}
 	}
 }

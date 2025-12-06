@@ -517,6 +517,11 @@ public:
 		float m_Uncertainty = 0.0f;
 		float m_VolleyBallAngle = 0.0f;
 		bool m_IsVolleyBall = false;
+	
+		// Chat bubble above player's head
+		char m_aChatBubbleText[256] = "";
+		int64_t m_ChatBubbleStartTick = 0;
+		int64_t m_ChatBubbleExpireTick = 0;
 
 		std::shared_ptr<CManagedTeeRenderInfo> m_pSkinInfo = nullptr; // this is what the server reports
 		CTeeRenderInfo m_RenderInfo; // this is what we use

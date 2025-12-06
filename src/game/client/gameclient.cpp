@@ -3211,6 +3211,11 @@ void CGameClient::CClientData::Reset()
 	m_SpecCharPresent = false;
 	m_SpecChar = vec2(0.0f, 0.0f);
 
+	// Chat bubble
+	m_aChatBubbleText[0] = '\0';
+	m_ChatBubbleStartTick = 0;
+	m_ChatBubbleExpireTick = 0;
+
 	for(auto &Info : m_aSixup)
 		Info.Reset();
 }

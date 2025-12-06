@@ -41,6 +41,20 @@ class CTClient : public CComponent
 
 	bool ServerCommandExists(const char *pCommand);
 
+	// Water Fall Detection
+	bool m_aWasInDeath[NUM_DUMMIES] = {false, false};
+	int64_t m_aLastWaterFallTime[NUM_DUMMIES] = {0, 0};
+	int64_t m_aLastWaterHeartTime[NUM_DUMMIES] = {0, 0}; // 添加爱心发送时间记录
+	int64_t m_aLastWaterMessageTime[NUM_DUMMIES] = {0, 0}; // 添加消息发送时间记录
+	void CheckWaterFall();
+
+	// Freeze Detection
+	bool m_aWasInFreeze[NUM_DUMMIES] = {false, false};
+	int64_t m_aLastFreezeTime[NUM_DUMMIES] = {0, 0};
+	int64_t m_aLastFreezeEmoticonTime[NUM_DUMMIES] = {0, 0};
+	int64_t m_aLastFreezeMessageTime[NUM_DUMMIES] = {0, 0};
+	void CheckFreeze();
+
 public:
 	CTClient();
 	int Sizeof() const override { return sizeof(*this); }

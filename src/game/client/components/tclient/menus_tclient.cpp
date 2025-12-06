@@ -766,6 +766,38 @@ void CMenus::RenderSettingsTClientSettings(CUIRect MainView)
 	s_SectionBoxes.back().h = Column.y - s_SectionBoxes.back().y;
 	// TODO: add preview
 
+		// ***** Freeze Chat ***** //
+	Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+	s_SectionBoxes.push_back(Column);
+	Column.HSplitTop(HeadlineHeight, &Label, &Column);
+	Ui()->DoLabel(&Label, TCLocalize("Gores演员专用"), HeadlineFontSize, TEXTALIGN_ML);
+	Column.HSplitTop(MarginSmall, nullptr, &Column);
+
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcFreezeChatEnabled, TCLocalize("掉水里自动发言和表情"), &g_Config.m_TcFreezeChatEnabled, &Column, LineSize);
+
+	if(g_Config.m_TcFreezeChatEnabled)
+	{
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcFreezeChatEmoticon, TCLocalize("掉水里发表情"), &g_Config.m_TcFreezeChatEmoticon, &Column, LineSize);
+
+		if(g_Config.m_TcFreezeChatEmoticon)
+		{
+			Column.HSplitTop(LineSize, &Button, &Column);
+			Ui()->DoScrollbarOption(&g_Config.m_TcFreezeChatEmoticonId, &g_Config.m_TcFreezeChatEmoticonId, &Button, TCLocalize("表情ID"), 0, 15);
+		}
+
+		CUIRect FreezeChatMessage;
+		Column.HSplitTop(LineSize + MarginExtraSmall, &FreezeChatMessage, &Column);
+		FreezeChatMessage.HSplitTop(MarginExtraSmall, nullptr, &FreezeChatMessage);
+		FreezeChatMessage.VSplitMid(&Label, &FreezeChatMessage);
+		Ui()->DoLabel(&Label, TCLocalize("聊天消息:"), FontSize, TEXTALIGN_ML);
+		static CLineInput s_FreezeChatMessage(g_Config.m_TcFreezeChatMessage, sizeof(g_Config.m_TcFreezeChatMessage));
+		s_FreezeChatMessage.SetEmptyText(TCLocalize("留空禁用"));
+		Ui()->DoEditBox(&s_FreezeChatMessage, &FreezeChatMessage, EditBoxFontSize);
+	}
+
+	Column.HSplitTop(MarginExtraSmall, nullptr, &Column);
+	s_SectionBoxes.back().h = Column.y - s_SectionBoxes.back().y;
+
 	// ***** RightView ***** //
 	LeftView = Column;
 	Column = RightView;
@@ -1046,6 +1078,62 @@ void CMenus::RenderSettingsTClientSettings(CUIRect MainView)
 	static CLineInput s_FinishName(g_Config.m_TcFinishName, sizeof(g_Config.m_TcFinishName));
 	Ui()->DoEditBox(&s_FinishName, &Button, EditBoxFontSize);
 	s_SectionBoxes.back().h = Column.y - s_SectionBoxes.back().y;
+
+		// ***** Chat Bubble ***** //
+	Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+	s_SectionBoxes.push_back(Column);
+	Column.HSplitTop(HeadlineHeight, &Label, &Column);
+	Ui()->DoLabel(&Label, TCLocalize("消息气泡"), HeadlineFontSize, TEXTALIGN_ML);
+	Column.HSplitTop(MarginSmall, nullptr, &Column);
+
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcChatBubble, TCLocalize("在玩家头顶显示聊天气泡"), &g_Config.m_TcChatBubble, &Column, LineSize);
+
+	if(g_Config.m_TcChatBubble)
+	{
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcChatBubbleTyping, TCLocalize("显示正在输入的预览气泡"), &g_Config.m_TcChatBubbleTyping, &Column, LineSize);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcChatBubbleZoomScale, TCLocalize("聊天气泡随镜头缩放"), &g_Config.m_TcChatBubbleZoomScale, &Column, LineSize);
+
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleDuration, &g_Config.m_TcChatBubbleDuration, &Button, TCLocalize("持续时间"), 1, 30, &CUi::ms_LinearScrollbarScale, 0, "s");
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleAlpha, &g_Config.m_TcChatBubbleAlpha, &Button, TCLocalize("透明度"), 0, 100, &CUi::ms_LinearScrollbarScale, 0, "%");
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleFontSize, &g_Config.m_TcChatBubbleFontSize, &Button, TCLocalize("字体大小"), 8, 24);
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleMaxWidth, &g_Config.m_TcChatBubbleMaxWidth, &Button, TCLocalize("最大宽度"), 100, 400, &CUi::ms_LinearScrollbarScale, 0, "px");
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleOffsetY, &g_Config.m_TcChatBubbleOffsetY, &Button, TCLocalize("垂直偏移"), 20, 100);
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcChatBubbleRounding, &g_Config.m_TcChatBubbleRounding, &Button, TCLocalize("圆角"), 0, 30);
+
+		// Animation dropdown
+		Column.HSplitTop(MarginExtraSmall, nullptr, &Column);
+		static std::vector<const char *> s_ChatBubbleAnimDropDownNames;
+		s_ChatBubbleAnimDropDownNames = {TCLocalize("淡出"), TCLocalize("收缩"), TCLocalize("上滑")};
+		static CUi::SDropDownState s_ChatBubbleAnimDropDownState;
+		static CScrollRegion s_ChatBubbleAnimDropDownScrollRegion;
+		s_ChatBubbleAnimDropDownState.m_SelectionPopupContext.m_pScrollRegion = &s_ChatBubbleAnimDropDownScrollRegion;
+		CUIRect AnimDropDownRect;
+		Column.HSplitTop(LineSize, &AnimDropDownRect, &Column);
+		AnimDropDownRect.VSplitLeft(120.0f, &Label, &AnimDropDownRect);
+		Ui()->DoLabel(&Label, TCLocalize("动画效果: "), FontSize, TEXTALIGN_ML);
+		const int AnimSelectedNew = Ui()->DoDropDown(&AnimDropDownRect, g_Config.m_TcChatBubbleAnimation, s_ChatBubbleAnimDropDownNames.data(), s_ChatBubbleAnimDropDownNames.size(), s_ChatBubbleAnimDropDownState);
+		if(g_Config.m_TcChatBubbleAnimation != AnimSelectedNew)
+		{
+			g_Config.m_TcChatBubbleAnimation = AnimSelectedNew;
+		}
+		Column.HSplitTop(MarginExtraSmall, nullptr, &Column);
+
+		// Color pickers
+		static CButtonContainer s_ChatBubbleBgColorId, s_ChatBubbleTextColorId;
+		DoLine_ColorPicker(&s_ChatBubbleBgColorId, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerLineSpacing, &Column, TCLocalize("背景颜色"), &g_Config.m_TcChatBubbleBgColor, ColorRGBA(0.0f, 0.0f, 0.0f, 0.8f), false, nullptr, true);
+		DoLine_ColorPicker(&s_ChatBubbleTextColorId, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerLineSpacing, &Column, TCLocalize("文本颜色"), &g_Config.m_TcChatBubbleTextColor, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), false);
+	}
+
+	s_SectionBoxes.back().h = Column.y - s_SectionBoxes.back().y;
+
+
+
 
 	// ***** END OF PAGE 1 SETTINGS ***** //
 	RightView = Column;
@@ -1786,7 +1874,7 @@ void CMenus::RenderSettingsTClientStatusBar(CUIRect MainView)
 	Ui()->DoLabel(&Label, TCLocalize("Local Time"), HeadlineFontSize, TEXTALIGN_ML);
 	LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcStatusBar12HourClock, TCLocalize("Use 12 hour clock"), &g_Config.m_TcStatusBar12HourClock, &LeftView, LineSize);
-	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcStatusBarLocalTimeSeocnds, TCLocalize("Show seconds on clock"), &g_Config.m_TcStatusBarLocalTimeSeocnds, &LeftView, LineSize);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcStatusBarLocalTimeSeconds, TCLocalize("Show seconds on clock"), &g_Config.m_TcStatusBarLocalTimeSeconds, &LeftView, LineSize);
 	LeftView.HSplitTop(HeadlineHeight, &Label, &LeftView);
 
 	LeftView.HSplitTop(HeadlineHeight, &Label, &LeftView);

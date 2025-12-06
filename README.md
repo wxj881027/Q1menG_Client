@@ -274,3 +274,27 @@ tc_color_freeze_feet
 tc_spec_menu_ID
 tc_limit_mouse_to_screen
 ```
+
+## 聊天气泡实现流程(Mermaid 图)
+
+```mermaid
+flowchart TD
+    输入[玩家输入消息]
+    网络[消息网络分发]
+    队列[本地聊天队列]
+    渲染[渲染：Tee头像+气泡+文本]
+    消失[气泡消失/透明度渐变]
+
+    输入 -->|SendChat/SendChatQueued| 网络
+    网络 -->|服务器广播，所有客户端均回调OnMessage| 队列
+    队列 -->|AddLine存储&准备渲染信息| 渲染
+    渲染 --> 消失
+
+    渲染 -- 计算文本位置/挂载角色头顶 --> 消失
+```
+
+**说明要点：**
+- 玩家输入通过 `SendChat/Queued`，本地和服务端互通后，每台客户端都用 `OnMessage→AddLine` 存储消息。
+- 每条消息都保留了可选 Tee 头像渲染信息（如角色ID、外观、坐标等）。
+- 渲染时不只画文字，若有角色，则在文本气泡旁边/头顶同时绘制对应 Tee。
+- `OnPrepareLines` 负责气泡排布和消失动画控制。

@@ -5,13 +5,12 @@
 
 
 ## 📝 Introduction 
-**English:**  
+
 Q1menG_Client is a customized client built upon the foundations of TaterClient and the DDNet client.  
 It provides additional visual enhancements, personalized features, and small quality-of-life improvements while remaining compatible with DDNet gameplay.
 
 ## ✨ Features (Added / Modified)  
 
-**English:**  
 - Improved UI elements and custom visual adjustments  
 - New effect and animation options  
 - Additional configuration toggles  
@@ -20,7 +19,6 @@ It provides additional visual enhancements, personalized features, and small qua
 
 ## 🔧 Build Instructions
 
- **English: Required Tools**
 - CMake 3.16+
 - Visual Studio 2022 (Desktop C++ Development workload)
 - Python 3.x (for asset generation)
@@ -42,13 +40,11 @@ Their original work remains licensed under the zlib/libpng license, and all orig
 
 📜 License 
 
-English:
 This project follows the zlib/libpng license, identical to the upstream DDNet/TaterClient licensing terms.
 Modified versions must be clearly marked and original authorship must not be misrepresented.
 
 ## 📮 Notes 
 
-English:
 This client is purely a personal/custom modification project and is not affiliated with DDNet or TaterClient developers.
 ---
 

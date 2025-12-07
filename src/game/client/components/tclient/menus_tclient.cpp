@@ -793,6 +793,9 @@ void CMenus::RenderSettingsTClientSettings(CUIRect MainView)
 		static CLineInput s_FreezeChatMessage(g_Config.m_TcFreezeChatMessage, sizeof(g_Config.m_TcFreezeChatMessage));
 		s_FreezeChatMessage.SetEmptyText(TCLocalize("留空禁用"));
 		Ui()->DoEditBox(&s_FreezeChatMessage, &FreezeChatMessage, EditBoxFontSize);
+		Column.HSplitTop(LineSize, &Button, &Column);
+		Ui()->DoScrollbarOption(&g_Config.m_TcFreezeChatChance, &g_Config.m_TcFreezeChatChance, &Button, TCLocalize("发送概率"), 0, 100, &CUi::ms_LinearScrollbarScale, 0, "%");
+
 	}
 
 	Column.HSplitTop(MarginExtraSmall, nullptr, &Column);

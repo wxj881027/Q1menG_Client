@@ -50,8 +50,7 @@ class CTClient : public CComponent
 
 	// Freeze Detection
 	bool m_aWasInFreeze[NUM_DUMMIES] = {false, false};
-	int64_t m_aLastFreezeTime[NUM_DUMMIES] = {0, 0};
-	int64_t m_aLastFreezeEmoticonTime[NUM_DUMMIES] = {0, 0};
+	int64_t m_aLastFreezeEmoteTime[NUM_DUMMIES] = {0, 0};
 	int64_t m_aLastFreezeMessageTime[NUM_DUMMIES] = {0, 0};
 	void CheckFreeze();
 

@@ -557,6 +557,136 @@ void CTClient::OnRender()
 	}
 
 	DoFinishCheck();
+	CheckFreeze();
+	CheckWaterFall();
+}
+
+void CTClient::CheckFreeze()
+{
+	if(Client()->State() != IClient::STATE_ONLINE)
+		return;
+	if(!g_Config.m_TcFreezeChatEnabled)
+		return;
+
+	for(int Dummy = 0; Dummy < NUM_DUMMIES; ++Dummy)
+	{
+		// Only check for active dummy
+		if(Dummy == 1 && !Client()->DummyConnected())
+			continue;
+
+		const int ClientId = GameClient()->m_aLocalIds[Dummy];
+		if(ClientId < 0)
+			continue;
+
+		const auto &Client = GameClient()->m_aClients[ClientId];
+		if(!Client.m_Active)
+			continue;
+
+		// Check if player is currently frozen
+		bool IsInFreeze = Client.m_FreezeEnd != 0;
+
+		// Detect entering freeze (transition from not frozen to frozen)
+		if(IsInFreeze && !m_aWasInFreeze[Dummy])
+		{
+			int64_t Now = time_get();
+			int64_t FreqMs = time_freq() / 1000;
+
+			// Send emoticon (with 3 second cooldown)
+			if(g_Config.m_TcFreezeChatEmoticon && Now - m_aLastFreezeEmoteTime[Dummy] > 3000 * FreqMs)
+			{
+				GameClient()->m_Emoticon.Emote(g_Config.m_TcFreezeChatEmoticonId);
+				m_aLastFreezeEmoteTime[Dummy] = Now;
+			}
+
+			// Send chat message (with 5 second cooldown and probability check)
+			if(g_Config.m_TcFreezeChatMessage[0] != '\0' && Now - m_aLastFreezeMessageTime[Dummy] > 5000 * FreqMs)
+			{
+				// Check probability (0-100%)
+				int Chance = g_Config.m_TcFreezeChatChance;
+				if(Chance > 0 && (Chance >= 100 || (std::rand() % 100) < Chance))
+				{
+					// Parse comma-separated messages and pick one randomly
+					char aMessages[128];
+					str_copy(aMessages, g_Config.m_TcFreezeChatMessage);
+					
+					// Count messages and store pointers
+					std::vector<const char *> vMessages;
+					char *pToken = strtok(aMessages, ",");
+					while(pToken != nullptr)
+					{
+						// Skip leading spaces
+						while(*pToken == ' ')
+							pToken++;
+						if(*pToken != '\0')
+							vMessages.push_back(pToken);
+						pToken = strtok(nullptr, ",");
+					}
+					
+					// Pick a random message and send
+					if(!vMessages.empty())
+					{
+						const char *pSelectedMessage = vMessages[std::rand() % vMessages.size()];
+						GameClient()->m_Chat.SendChat(0, pSelectedMessage);
+						m_aLastFreezeMessageTime[Dummy] = Now;
+					}
+				}
+			}
+		}
+
+		m_aWasInFreeze[Dummy] = IsInFreeze;
+	}
+}
+
+void CTClient::CheckWaterFall()
+{
+	if(Client()->State() != IClient::STATE_ONLINE)
+		return;
+	if(!g_Config.m_TcWaterFallEnabled)
+		return;
+
+	for(int Dummy = 0; Dummy < NUM_DUMMIES; ++Dummy)
+	{
+		// Only check for active dummy
+		if(Dummy == 1 && !Client()->DummyConnected())
+			continue;
+
+		const int ClientId = GameClient()->m_aLocalIds[Dummy];
+		if(ClientId < 0)
+			continue;
+
+		const auto &Char = GameClient()->m_Snap.m_aCharacters[ClientId];
+		if(!Char.m_Active)
+			continue;
+
+		// Check if player is in death tile
+		vec2 Pos = vec2(Char.m_Cur.m_X, Char.m_Cur.m_Y);
+		int Index = Collision()->GetPureMapIndex(Pos);
+		int TileIndex = Collision()->GetTileIndex(Index);
+		bool IsInDeath = TileIndex == TILE_DEATH;
+
+		// Detect entering death (transition from not in death to in death)
+		if(IsInDeath && !m_aWasInDeath[Dummy])
+		{
+			int64_t Now = time_get();
+			int64_t FreqMs = time_freq() / 1000;
+
+			// Send heart emoticon (with 3 second cooldown)
+			if(g_Config.m_TcWaterFallEmoticon && Now - m_aLastWaterHeartTime[Dummy] > 3000 * FreqMs)
+			{
+				GameClient()->m_Emoticon.Emote(EMOTICON_HEARTS); // Heart emoticon
+				m_aLastWaterHeartTime[Dummy] = Now;
+			}
+
+			// Send chat message (with 5 second cooldown)
+			if(g_Config.m_TcWaterFallMessage[0] != '\0' && Now - m_aLastWaterMessageTime[Dummy] > 5000 * FreqMs)
+			{
+				GameClient()->m_Chat.SendChat(0, g_Config.m_TcWaterFallMessage);
+				m_aLastWaterMessageTime[Dummy] = Now;
+			}
+		}
+
+		m_aWasInDeath[Dummy] = IsInDeath;
+	}
 }
 
 bool CTClient::NeedUpdate()
@@ -702,68 +832,6 @@ void CTClient::OnNewSnapshot()
 				m_aAirRescuePositions[Dummy].pop_back();
 			m_aAirRescuePositions[Dummy].push_front(NewPos);
 		}
-	}
-
-	// Check freeze state
-	CheckFreeze();
-}
-
-void CTClient::CheckFreeze()
-{
-	if(Client()->State() != IClient::STATE_ONLINE)
-		return;
-
-	if(!g_Config.m_TcFreezeChatEnabled)
-		return;
-
-	const int64_t Now = time_get();
-	const int64_t CooldownTime = time_freq() * 3; // 3 second cooldown
-
-	for(int Dummy = 0; Dummy < NUM_DUMMIES; ++Dummy)
-	{
-		// Only check main player, not dummy
-		if(Dummy != g_Config.m_ClDummy)
-			continue;
-
-		const int ClientId = GameClient()->m_aLocalIds[Dummy];
-		if(ClientId == -1)
-			continue;
-
-		const auto &Char = GameClient()->m_Snap.m_aCharacters[ClientId];
-		if(!Char.m_Active)
-		{
-			m_aWasInFreeze[Dummy] = false;
-			continue;
-		}
-
-		const auto &ClientData = GameClient()->m_aClients[ClientId];
-
-		// Check if player is currently in freeze
-		// FreezeEnd != 0 means the player is frozen or has been frozen recently
-		bool IsInFreeze = ClientData.m_FreezeEnd != 0;
-
-		// Detect transition from non-freeze to freeze
-		if(IsInFreeze && !m_aWasInFreeze[Dummy])
-		{
-			// Just entered freeze
-			m_aLastFreezeTime[Dummy] = Now;
-
-			// Send emoticon if enabled
-			if(g_Config.m_TcFreezeChatEmoticon && (Now - m_aLastFreezeEmoticonTime[Dummy]) > CooldownTime)
-			{
-				GameClient()->m_Emoticon.Emote(g_Config.m_TcFreezeChatEmoticonId);
-				m_aLastFreezeEmoticonTime[Dummy] = Now;
-			}
-
-			// Send chat message if enabled and message is not empty
-			if(g_Config.m_TcFreezeChatMessage[0] != '\0' && (Now - m_aLastFreezeMessageTime[Dummy]) > CooldownTime)
-			{
-				GameClient()->m_Chat.SendChat(0, g_Config.m_TcFreezeChatMessage);
-				m_aLastFreezeMessageTime[Dummy] = Now;
-			}
-		}
-
-		m_aWasInFreeze[Dummy] = IsInFreeze;
 	}
 }
 

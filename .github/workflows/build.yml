@@ -173,6 +173,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           export HOMEBREW_NO_AUTO_UPDATE=1
+          for tap in aws/tap azure/bicep; do
+            brew untap "$tap" 2>/dev/null || true
+          done
           for pkg in cmake ninja pkg-config python freetype sdl2 libpng webp libogg opus opusfile sqlite wavpack ffmpeg molten-vk vulkan-loader glslang; do
             if brew list --formula "$pkg" &>/dev/null; then
               brew link --overwrite "$pkg" 2>/dev/null || true
@@ -213,8 +216,9 @@ jobs:
               ;;
             Windows)
               ARGS+=(
+                -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
                 -DPREFER_BUNDLED_LIBS=ON -DCMAKE_OBJECT_PATH_MAX=1024
-                -DQM_DISABLE_PARALLEL_COMPILE=ON
+                -DQM_MSVC_USE_EMBEDDED_DEBUG_INFO=ON
               )
               ;;
           esac

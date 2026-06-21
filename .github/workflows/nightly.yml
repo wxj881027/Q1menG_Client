@@ -170,6 +170,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           export HOMEBREW_NO_AUTO_UPDATE=1
+          for tap in aws/tap azure/bicep; do
+            brew untap "$tap" 2>/dev/null || true
+          done
           for pkg in cmake ninja pkg-config python freetype sdl2 libpng webp libogg opus opusfile sqlite wavpack ffmpeg molten-vk vulkan-loader glslang; do
             if brew list --formula "$pkg" &>/dev/null; then
               brew link --overwrite "$pkg" 2>/dev/null || true
@@ -210,8 +213,9 @@ jobs:
               ;;
             Windows)
               ARGS+=(
+                -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
                 -DPREFER_BUNDLED_LIBS=ON -DCMAKE_OBJECT_PATH_MAX=1024
-                -DQM_DISABLE_PARALLEL_COMPILE=ON
+                -DQM_MSVC_USE_EMBEDDED_DEBUG_INFO=ON
               )
               ;;
           esac
@@ -315,6 +319,231 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build_android:
+    name: Android
+    runs-on: ubuntu-24.04
+    needs:
+      - changes
+    if: needs.changes.outputs.should_build == 'true'
+    timeout-minutes: 180
+    env:
+      ANDROID_APP_NAME: QmClient
+      ANDROID_PACKAGE_NAME: org.ddnet.client
+      ANDROID_BUILD_DIR: build-android-release
+      ANDROID_NDK_VERSION: "26.1.10909125"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SCCACHE_GHA_ENABLED: "true"
+      TW_KEY_NAME: /home/runner/.android/debug.keystore
+      TW_KEY_PW: android
+      TW_KEY_ALIAS: androiddebugkey
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+
+      - name: Setup ccache (Android)
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
+        with:
+          key: nightly-android-${{ runner.os }}
+          max-size: 500M
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+
+      - name: Cache cargo-ndk
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-ndk
+          key: nightly-cargo-ndk-${{ runner.os }}
+
+      - name: Cache Android NDK
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.android/sdk/ndk
+            ~/.android/sdk/platforms
+            ~/.android/sdk/build-tools
+          key: nightly-android-sdk-ndk-${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Cache Rust Android targets
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: nightly-rust-android-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: nightly-rust-android-${{ runner.os }}-
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config curl python3 python3-pip python3-pil \
+            glslang-tools spirv-tools ccache
+          if [ ! -f ~/.cargo/bin/cargo-ndk ]; then
+            cargo install cargo-ndk
+          fi
+          rustup target add armv7-linux-androideabi
+          rustup target add i686-linux-android
+          rustup target add aarch64-linux-android
+          rustup target add x86_64-linux-android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699  # v4.0.1
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;${{ env.ANDROID_NDK_VERSION }}"
+          yes | sdkmanager --licenses
+
+      - name: Cache WebP for Android
+        id: cache-webp
+        uses: actions/cache@v5
+        with:
+          path: ddnet-libs/webp/android
+          key: nightly-webp-android-v1.6.0-${{ hashFiles('.github/workflows/nightly.yml', 'ddnet-libs/webp/**') }}
+          restore-keys: nightly-webp-android-v1.6.0-
+
+      - name: Build WebP for Android (Parallel)
+        if: steps.cache-webp.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v1.6.0 https://chromium.googlesource.com/webm/libwebp
+          cd libwebp
+
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
+
+          build_abi() {
+            local ABI=$1
+            local DIR=$2
+            mkdir -p "build-android/${ABI}"
+            cmake -S . -B "build-android/${ABI}" \
+              -G Ninja \
+              -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="${ABI}" \
+              -DANDROID_PLATFORM=android-24 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="${PWD}/install-${ABI}" \
+              -DWEBP_BUILD_ANIM_UTILS=OFF \
+              -DWEBP_BUILD_CWEBP=OFF \
+              -DWEBP_BUILD_DWEBP=OFF \
+              -DWEBP_BUILD_EXTRAS=OFF \
+              -DWEBP_BUILD_GIF2WEBP=OFF \
+              -DWEBP_BUILD_IMG2WEBP=OFF \
+              -DWEBP_BUILD_VWEBP=OFF \
+              -DWEBP_BUILD_WEBPINFO=OFF \
+              -DWEBP_BUILD_WEBPMUX=OFF \
+              -DWEBP_BUILD_WEBP_JS=OFF 2>&1 | tee "build-${ABI}.log"
+            cmake --build "build-android/${ABI}" --parallel 2>&1 | tee -a "build-${ABI}.log"
+            cmake --install "build-android/${ABI}" 2>&1 | tee -a "build-${ABI}.log"
+            echo "Completed ${ABI}"
+          }
+
+          build_abi armeabi-v7a libarm &
+          build_abi arm64-v8a libarm64 &
+          build_abi x86 lib32 &
+          build_abi x86_64 lib64 &
+          wait
+
+          mkdir -p ../ddnet-libs/webp/include/webp
+          cp -r install-arm64-v8a/include/webp/* ../ddnet-libs/webp/include/webp/
+
+          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
+            case "${ABI}" in
+              armeabi-v7a) DIR="libarm" ;;
+              arm64-v8a) DIR="libarm64" ;;
+              x86) DIR="lib32" ;;
+              x86_64) DIR="lib64" ;;
+            esac
+            mkdir -p "../ddnet-libs/webp/android/${DIR}"
+            cp "install-${ABI}/lib/libwebp.a" "../ddnet-libs/webp/android/${DIR}/"
+            cp "install-${ABI}/lib/libwebpdemux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
+            cp "install-${ABI}/lib/libwebpmux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
+          done
+
+          echo "All WebP builds completed"
+
+      - name: Prepare Android signing keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "${TW_KEY_NAME}")"
+          if [ ! -f "${TW_KEY_NAME}" ]; then
+            keytool -genkeypair -v \
+              -keystore "${TW_KEY_NAME}" \
+              -storepass "${TW_KEY_PW}" \
+              -keypass "${TW_KEY_PW}" \
+              -alias "${TW_KEY_ALIAS}" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=GitHub Actions, OU=CI, O=QmClient, L=Unknown, ST=Unknown, C=US"
+          fi
+
+      - name: Build Android APK/AAB
+        shell: bash
+        run: |
+          chmod +x scripts/android/cmake_android.sh
+          scripts/android/cmake_android.sh all "${ANDROID_APP_NAME}" "${ANDROID_PACKAGE_NAME}" Release "${ANDROID_BUILD_DIR}"
+
+      - name: Collect Android package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "${ANDROID_BUILD_DIR}/${ANDROID_APP_NAME}.apk" dist/QmClient-android.apk
+          cp "${ANDROID_BUILD_DIR}/${ANDROID_APP_NAME}.aab" dist/QmClient-android.aab
+          ls -lah dist
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: nightly-android
+          path: |
+            dist/QmClient-android.apk
+            dist/QmClient-android.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify Android artifacts
+        run: |
+          for file in dist/QmClient-android.apk dist/QmClient-android.aab; do
+            if [ ! -f "$file" ]; then
+              echo "Build artifact not found: $file"
+              exit 1
+            fi
+            FILE_SIZE=$(stat -c%s "$file")
+            if [ "$FILE_SIZE" -lt 1000000 ]; then
+              echo "Build artifact too small: $file ($FILE_SIZE bytes)"
+              exit 1
+            fi
+            echo "Verified: $file ($FILE_SIZE bytes)"
+          done
+
   publish:
     name: Publish Nightly Prerelease
     runs-on: ubuntu-24.04
@@ -371,3 +600,37 @@ jobs:
             --target "${GITHUB_SHA}" \
             --prerelease \
             --latest=false
+
+  publish_android:
+    name: Publish Android Nightly Assets
+    runs-on: ubuntu-24.04
+    needs:
+      - changes
+      - build_android
+    if: needs.changes.outputs.should_build == 'true' && github.repository == 'wxj881027/QmClient'
+    permissions:
+      contents: write
+    steps:
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: nightly-android
+          path: release-assets
+
+      - name: List Android assets
+        run: ls -lah release-assets
+
+      - name: Upload Android assets to nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view nightly >/dev/null 2>&1; then
+            echo "Nightly release does not exist yet; Android assets will remain as workflow artifacts."
+            exit 0
+          fi
+          gh release upload nightly \
+            release-assets/QmClient-android.apk \
+            release-assets/QmClient-android.aab \
+            --clobber

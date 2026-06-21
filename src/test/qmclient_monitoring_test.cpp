@@ -5924,6 +5924,8 @@ TEST(QmMonitoringHelpers, WindowsReleaseBuildProducesPdbSymbols)
 {
 	const std::string Source = ReadRepoFile("CMakeLists.txt");
 
+	EXPECT_NE(Source.find("QM_MSVC_USE_EMBEDDED_DEBUG_INFO"), std::string::npos);
+	EXPECT_NE(Source.find("$<$<CONFIG:Debug,Release,RelWithDebInfo>:Embedded>"), std::string::npos);
 	EXPECT_NE(Source.find("$<$<CONFIG:Release,RelWithDebInfo>:ProgramDatabase>"), std::string::npos);
 	EXPECT_NE(Source.find("$<$<CONFIG:Release,RelWithDebInfo>:/DEBUG>"), std::string::npos);
 	EXPECT_NE(Source.find("$<$<CONFIG:Release,RelWithDebInfo>:/OPT:REF>"), std::string::npos);

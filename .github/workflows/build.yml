@@ -140,7 +140,20 @@ jobs:
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c  # v1.13.0
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) {
+            throw "Visual Studio with MSVC tools was not found"
+          }
+          $devCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$devCmd`" -arch=x64 -host_arch=x64 && set" |
+            ForEach-Object {
+              if ($_ -match "^(.*?)=(.*)$") {
+                "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
+              }
+            }
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -200,8 +213,8 @@ jobs:
               ;;
             Windows)
               ARGS+=(
-                -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
                 -DPREFER_BUNDLED_LIBS=ON -DCMAKE_OBJECT_PATH_MAX=1024
+                -DQM_DISABLE_PARALLEL_COMPILE=ON
               )
               ;;
           esac

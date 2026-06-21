@@ -201,7 +201,7 @@ jobs:
         run: cmake --build build --target game-client --parallel
 
       - name: Run tests
-        if: !(github.event_name == 'workflow_dispatch' && inputs.skip_tests == 'true')
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_tests == 'true') }}
         shell: bash
         run: cmake --build build --target run_tests --parallel
 

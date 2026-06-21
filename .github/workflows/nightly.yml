@@ -574,12 +574,10 @@ jobs:
         shell: bash
         run: |
           {
-            echo "# QmClient Nightly"
-            echo
-            echo "- Commit: ${GITHUB_SHA}"
-            echo "- Source branch: ${GITHUB_REF_NAME}"
-            echo "- Built at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            echo "- This is an internal testing build and may be replaced by the next nightly run."
+            echo "- 提交：${GITHUB_SHA}"
+            echo "- 来源分支：${GITHUB_REF_NAME}"
+            echo "- 构建时间：$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "- 说明：这是内部测试构建，可能会被下一次 nightly 构建替换。"
           } > release-assets/nightly-notes.md
 
       - name: Replace nightly prerelease

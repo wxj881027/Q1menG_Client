@@ -37,6 +37,13 @@ find_library(WebPMUX_LIBRARY
   ${CROSSCOMPILING_NO_CMAKE_SYSTEM_PATH}
 )
 
+find_library(WebP_SHARPYUV_LIBRARY
+  NAMES sharpyuv libsharpyuv
+  HINTS ${HINTS_WebP_LIBDIR} ${PC_WebP_LIBDIR} ${PC_WebP_LIBRARY_DIRS}
+  PATHS ${PATHS_WebP_LIBDIR}
+  ${CROSSCOMPILING_NO_CMAKE_SYSTEM_PATH}
+)
+
 set_extra_dirs_include(WebP webp "${WebP_LIBRARY}")
 find_path(WebP_INCLUDEDIR
   NAMES webp/decode.h
@@ -45,7 +52,7 @@ find_path(WebP_INCLUDEDIR
   ${CROSSCOMPILING_NO_CMAKE_SYSTEM_PATH}
 )
 
-mark_as_advanced(WebP_LIBRARY WebPDEMUX_LIBRARY WebPMUX_LIBRARY WebP_INCLUDEDIR)
+mark_as_advanced(WebP_LIBRARY WebPDEMUX_LIBRARY WebPMUX_LIBRARY WebP_SHARPYUV_LIBRARY WebP_INCLUDEDIR)
 
 if(WebP_LIBRARY AND WebP_INCLUDEDIR)
   include(FindPackageHandleStandardArgs)
@@ -57,6 +64,9 @@ if(WebP_LIBRARY AND WebP_INCLUDEDIR)
   endif()
   if(WebPMUX_LIBRARY)
     list(APPEND WebP_LIBRARIES ${WebPMUX_LIBRARY})
+  endif()
+  if(WebP_SHARPYUV_LIBRARY)
+    list(APPEND WebP_LIBRARIES ${WebP_SHARPYUV_LIBRARY})
   endif()
   if(NOT WebP_INCLUDE_DIRS)
     set(WebP_INCLUDE_DIRS ${WebP_INCLUDEDIR})

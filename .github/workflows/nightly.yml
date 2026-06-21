@@ -425,8 +425,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ddnet-libs/webp/android
-          key: nightly-webp-android-v1.6.0-${{ hashFiles('.github/workflows/nightly.yml', 'ddnet-libs/webp/**') }}
-          restore-keys: nightly-webp-android-v1.6.0-
+          key: nightly-webp-android-v1.6.0-sharpyuv-${{ hashFiles('.github/workflows/nightly.yml', 'ddnet-libs/webp/**') }}
+          restore-keys: nightly-webp-android-v1.6.0-sharpyuv-
 
       - name: Build WebP for Android (Parallel)
         if: steps.cache-webp.outputs.cache-hit != 'true'
@@ -484,6 +484,7 @@ jobs:
             cp "install-${ABI}/lib/libwebp.a" "../ddnet-libs/webp/android/${DIR}/"
             cp "install-${ABI}/lib/libwebpdemux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
             cp "install-${ABI}/lib/libwebpmux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
+            cp "install-${ABI}/lib/libsharpyuv.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
           done
 
           echo "All WebP builds completed"

@@ -85,6 +85,12 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Setup Python
+        id: setup-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Update version from tag
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -161,20 +167,25 @@ jobs:
               brew install "$pkg"
             fi
           done
-          python3 -m venv .venv-dmgbuild
-          . .venv-dmgbuild/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install dmgbuild Pillow
-          echo "${PWD}/.venv-dmgbuild/bin" >> "$GITHUB_PATH"
 
-      - name: Install Python build dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: python -m pip install Pillow
+      - name: Install Python build dependencies
+        shell: bash
+        env:
+          PYTHON_EXECUTABLE: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          "${PYTHON_EXECUTABLE}" -m pip install --upgrade pip
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            "${PYTHON_EXECUTABLE}" -m pip install dmgbuild Pillow
+          else
+            "${PYTHON_EXECUTABLE}" -m pip install Pillow
+          fi
 
       - name: Configure
         shell: bash
+        env:
+          PYTHON_EXECUTABLE: ${{ steps.setup-python.outputs.python-path }}
         run: |
-          ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DDOWNLOAD_GTEST=ON)
+          ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DDOWNLOAD_GTEST=ON -DPython3_EXECUTABLE="${PYTHON_EXECUTABLE}")
           case "$RUNNER_OS" in
             Linux)
               ARGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)

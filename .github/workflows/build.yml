@@ -102,7 +102,7 @@ jobs:
         uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
 
       - name: Cache CMake build
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: |
             build/_deps
@@ -111,7 +111,7 @@ jobs:
 
       - name: Cache Homebrew packages
         if: runner.os == 'macOS'
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: homebrew-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
@@ -358,13 +358,13 @@ jobs:
         uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
 
       - name: Cache cargo-ndk
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/cargo-ndk
           key: cargo-ndk-${{ runner.os }}
 
       - name: Cache Android NDK
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: |
             ~/.android/sdk/ndk
@@ -373,7 +373,7 @@ jobs:
           key: android-sdk-ndk-${{ env.ANDROID_NDK_VERSION }}
 
       - name: Cache Rust Android targets
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: |
             ~/.rustup/toolchains
@@ -410,7 +410,7 @@ jobs:
 
       - name: Cache WebP for Android
         id: cache-webp
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: ddnet-libs/webp/android
           key: webp-android-v1.6.0-${{ hashFiles('.github/workflows/build.yml', 'ddnet-libs/webp/**') }}

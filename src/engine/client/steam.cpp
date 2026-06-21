@@ -3,6 +3,8 @@
 #include <engine/shared/config.h>
 #include <engine/steam.h>
 
+#include <game/version.h>
+
 #include <steam/steam_api_flat.h>
 
 namespace
@@ -17,6 +19,17 @@ namespace
 		bool m_GotConnectAddr;
 		NETADDR m_ConnectAddr;
 
+		void SetClientPresence()
+		{
+			SteamAPI_ISteamFriends_SetRichPresence(m_pSteamFriends, "status", CLIENT_NAME);
+			SteamAPI_ISteamFriends_SetRichPresence(m_pSteamFriends, "steam_display", "#Status");
+		}
+		void ResetClientPresence()
+		{
+			SteamAPI_ISteamFriends_ClearRichPresence(m_pSteamFriends);
+			SetClientPresence();
+		}
+
 	public:
 		CSteam()
 		{
@@ -27,6 +40,7 @@ namespace
 
 			ReadLaunchCommandLine();
 			str_copy(m_aPlayerName, SteamAPI_ISteamFriends_GetPersonaName(m_pSteamFriends));
+			ResetClientPresence();
 		}
 		~CSteam() override
 		{
@@ -114,7 +128,7 @@ namespace
 		}
 		void ClearGameInfo() override
 		{
-			SteamAPI_ISteamFriends_ClearRichPresence(m_pSteamFriends);
+			ResetClientPresence();
 		}
 		void SetGameInfo(const NETADDR &ServerAddr, const char *pMapName, bool AnnounceAddr) override
 		{
@@ -127,8 +141,7 @@ namespace
 			}
 
 			SteamAPI_ISteamFriends_SetRichPresence(m_pSteamFriends, "map", pMapName);
-			SteamAPI_ISteamFriends_SetRichPresence(m_pSteamFriends, "status", pMapName);
-			SteamAPI_ISteamFriends_SetRichPresence(m_pSteamFriends, "steam_display", "#Status");
+			SetClientPresence();
 		}
 	};
 

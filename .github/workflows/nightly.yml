@@ -574,10 +574,25 @@ jobs:
         shell: bash
         run: |
           {
-            echo "- 提交：${GITHUB_SHA}"
-            echo "- 来源分支：${GITHUB_REF_NAME}"
-            echo "- 构建时间：$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            echo "- 说明：这是内部测试构建，可能会被下一次 nightly 构建替换。"
+            echo "# 更新日志"
+            echo "> Version: nightly"
+            echo "> Commit: ${GITHUB_SHA}"
+            echo "> Branch: ${GITHUB_REF_NAME}"
+            echo "> Built at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo
+            echo "##feat."
+            echo "- nightly: 这是内部测试构建，包含当前分支的最新提交，可能会被下一次 nightly 构建替换。"
+            echo
+            echo "## fix"
+            echo "- None"
+            echo
+            echo "# What's Changed"
+            echo
+            echo "## feat."
+            echo "- nightly: Internal testing build for the latest commits on the current branch. It may be replaced by the next nightly run."
+            echo
+            echo "## fix"
+            echo "- None"
           } > release-assets/nightly-notes.md
 
       - name: Replace nightly prerelease

@@ -163,7 +163,7 @@ jobs:
             libvulkan-dev glslang-tools spirv-tools \
             libavcodec-dev libavformat-dev libavutil-dev \
             libswresample-dev libswscale-dev libx264-dev \
-            libpng-dev libwebp-dev libcurl4-openssl-dev libssl-dev \
+            libpng-dev libcurl4-openssl-dev libssl-dev \
             libogg-dev libopus-dev libopusfile-dev libwavpack-dev
 
       - name: Install macOS dependencies
@@ -173,7 +173,7 @@ jobs:
           for tap in aws/tap azure/bicep; do
             brew untap "$tap" 2>/dev/null || true
           done
-          for pkg in cmake ninja pkg-config python freetype sdl2 libpng webp libogg opus opusfile sqlite wavpack ffmpeg molten-vk vulkan-loader glslang; do
+          for pkg in cmake ninja pkg-config python freetype sdl2 libpng libogg opus opusfile sqlite wavpack ffmpeg molten-vk vulkan-loader glslang; do
             if brew list --formula "$pkg" &>/dev/null; then
               brew link --overwrite "$pkg" 2>/dev/null || true
             else
@@ -431,75 +431,6 @@ jobs:
             "build-tools;36.1.0" \
             "ndk;${{ env.ANDROID_NDK_VERSION }}"
           yes | sdkmanager --licenses
-
-      - name: Cache WebP for Android
-        id: cache-webp
-        uses: actions/cache@v5
-        with:
-          path: ddnet-libs/webp/android
-          key: nightly-webp-android-v1.6.0-sharpyuv-${{ hashFiles('.github/workflows/nightly.yml', 'ddnet-libs/webp/**') }}
-          restore-keys: nightly-webp-android-v1.6.0-sharpyuv-
-
-      - name: Build WebP for Android (Parallel)
-        if: steps.cache-webp.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch v1.6.0 https://chromium.googlesource.com/webm/libwebp
-          cd libwebp
-
-          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
-
-          build_abi() {
-            local ABI=$1
-            local DIR=$2
-            mkdir -p "build-android/${ABI}"
-            cmake -S . -B "build-android/${ABI}" \
-              -G Ninja \
-              -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-              -DANDROID_ABI="${ABI}" \
-              -DANDROID_PLATFORM=android-24 \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_INSTALL_PREFIX="${PWD}/install-${ABI}" \
-              -DWEBP_BUILD_ANIM_UTILS=OFF \
-              -DWEBP_BUILD_CWEBP=OFF \
-              -DWEBP_BUILD_DWEBP=OFF \
-              -DWEBP_BUILD_EXTRAS=OFF \
-              -DWEBP_BUILD_GIF2WEBP=OFF \
-              -DWEBP_BUILD_IMG2WEBP=OFF \
-              -DWEBP_BUILD_VWEBP=OFF \
-              -DWEBP_BUILD_WEBPINFO=OFF \
-              -DWEBP_BUILD_WEBPMUX=OFF \
-              -DWEBP_BUILD_WEBP_JS=OFF 2>&1 | tee "build-${ABI}.log"
-            cmake --build "build-android/${ABI}" --parallel 2>&1 | tee -a "build-${ABI}.log"
-            cmake --install "build-android/${ABI}" 2>&1 | tee -a "build-${ABI}.log"
-            echo "Completed ${ABI}"
-          }
-
-          build_abi armeabi-v7a libarm &
-          build_abi arm64-v8a libarm64 &
-          build_abi x86 lib32 &
-          build_abi x86_64 lib64 &
-          wait
-
-          mkdir -p ../ddnet-libs/webp/include/webp
-          cp -r install-arm64-v8a/include/webp/* ../ddnet-libs/webp/include/webp/
-
-          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
-            case "${ABI}" in
-              armeabi-v7a) DIR="libarm" ;;
-              arm64-v8a) DIR="libarm64" ;;
-              x86) DIR="lib32" ;;
-              x86_64) DIR="lib64" ;;
-            esac
-            mkdir -p "../ddnet-libs/webp/android/${DIR}"
-            cp "install-${ABI}/lib/libwebp.a" "../ddnet-libs/webp/android/${DIR}/"
-            cp "install-${ABI}/lib/libwebpdemux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
-            cp "install-${ABI}/lib/libwebpmux.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
-            cp "install-${ABI}/lib/libsharpyuv.a" "../ddnet-libs/webp/android/${DIR}/" 2>/dev/null || true
-          done
-
-          echo "All WebP builds completed"
 
       - name: Prepare Android signing keystore
         shell: bash

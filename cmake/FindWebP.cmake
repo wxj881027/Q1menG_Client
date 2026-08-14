@@ -1,3 +1,10 @@
+# QmClient：全平台优先使用 ddnet-libs 自带的预编译 webp（自包含，不依赖系统包），
+# 自带库缺失时回退到系统包（pkg-config）。
+if(TARGET_OS AND TARGET_BITS)
+  set(HINTS_WebP_LIBDIR "ddnet-libs/webp/${LIB_DIR}")
+  set(HINTS_WebP_INCLUDEDIR "ddnet-libs/webp/include")
+endif()
+
 if(NOT PREFER_BUNDLED_LIBS)
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
@@ -68,9 +75,8 @@ if(WebP_LIBRARY AND WebP_INCLUDEDIR)
   if(WebP_SHARPYUV_LIBRARY)
     list(APPEND WebP_LIBRARIES ${WebP_SHARPYUV_LIBRARY})
   endif()
-  if(NOT WebP_INCLUDE_DIRS)
-    set(WebP_INCLUDE_DIRS ${WebP_INCLUDEDIR})
-  endif()
+  # 优先使用 find_path 找到的头文件目录（自带库优先），避免与 pkg-config 的系统头混用
+  set(WebP_INCLUDE_DIRS ${WebP_INCLUDEDIR})
 endif()
 
 if(WebP_FOUND)
